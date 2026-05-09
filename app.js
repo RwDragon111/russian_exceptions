@@ -1042,16 +1042,12 @@ function renderTextbookLinks(subjectId) {
   return textbooks
     .map(
       (book) => `
-        <a class="action-button secondary textbook-link" href="${escapeHtml(buildReaderUrl(book))}" target="_blank" rel="noopener">
+        <a class="action-button secondary textbook-link" href="${escapeHtml(book.href)}" target="_blank" rel="noopener">
           ${escapeHtml(book.title)}
         </a>
       `
     )
     .join("");
-}
-
-function buildReaderUrl(book) {
-  return `reader.html?file=${encodeURIComponent(book.href)}&title=${encodeURIComponent(book.title)}`;
 }
 
 function renderExceptionsTable() {
