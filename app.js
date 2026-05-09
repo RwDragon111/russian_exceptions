@@ -47,6 +47,30 @@ const physicsFormulas = physicsSections.flatMap((section) =>
     sectionTitle: section.title
   }))
 );
+const physicsProblemBank = window.PHYSICS_PROBLEM_BANK || { sections: [] };
+const physicsProblemSectionMap = new Map(
+  (physicsProblemBank.sections || []).map((section) => [section.id, section])
+);
+const physicsProblemGroupMap = new Map(
+  (physicsProblemBank.sections || []).flatMap((section) =>
+    section.groups.map((group) => [group.id, { ...group, sectionId: section.id, sectionTitle: section.title }])
+  )
+);
+const physicsProblemTopicMap = new Map(
+  (physicsProblemBank.sections || []).flatMap((section) =>
+    section.groups.flatMap((group) =>
+      group.topics.map((topic) => [
+        topic.id,
+        { ...topic, groupId: group.id, groupTitle: group.title, type: group.type, sectionId: section.id, sectionTitle: section.title }
+      ])
+    )
+  )
+);
+const physicsProblemTaskMap = new Map(
+  [...physicsProblemTopicMap.values()].flatMap((topic) =>
+    topic.tasks.map((task) => [task.id, { ...task, topicId: topic.id, topicTitle: topic.title, groupId: topic.groupId, groupTitle: topic.groupTitle, type: topic.type, sectionId: topic.sectionId, sectionTitle: topic.sectionTitle }])
+  )
+);
 
 const subjects = [
   { id: "russian", title: "Русский язык", text: "Исключения, правила и ошибкоопасные слова." },
@@ -109,6 +133,7 @@ const state = {
     count: 10
   },
   physicsSession: null,
+  physicsProblemSession: null,
   locked: false,
   timer: null
 };
@@ -228,6 +253,30 @@ document.addEventListener("click", (event) => {
     case "physics-start-game":
       startPhysicsGame();
       break;
+    case "physics-open-problems":
+      openPhysicsProblems();
+      break;
+    case "physics-problem-section":
+      openPhysicsProblemTopics(value);
+      break;
+    case "physics-problem-group":
+      openPhysicsProblemGroup(value);
+      break;
+    case "physics-problem-topic":
+      openPhysicsProblemPractice(value);
+      break;
+    case "physics-problem-task":
+      openPhysicsProblemTask(value);
+      break;
+    case "physics-problem-show-answer":
+      showPhysicsProblemAnswer();
+      break;
+    case "physics-problem-check":
+      checkPhysicsProblemAnswer();
+      break;
+    case "physics-problem-back-sections":
+      openPhysicsProblems();
+      break;
     case "physics-show-table":
       state.route = "physics-table";
       render();
@@ -249,15 +298,20 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   const input = event.target.closest("input[data-action='config-count']");
 
-  if (!input) {
-    return;
+  if (input) {
+    state.config.count = clampCount(input.value);
+    const output = dom.app.querySelector("[data-config-count-output]");
+
+    if (output) {
+      output.textContent = state.config.count;
+    }
   }
 
-  state.config.count = clampCount(input.value);
-  const output = dom.app.querySelector("[data-config-count-output]");
+  const problemAnswer = event.target.closest("input[data-action='physics-problem-answer']");
 
-  if (output) {
-    output.textContent = state.config.count;
+  if (problemAnswer && state.physicsProblemSession) {
+    state.physicsProblemSession.userAnswer = problemAnswer.value;
+    state.physicsProblemSession.feedback = null;
   }
 });
 
@@ -285,6 +339,7 @@ function goHome() {
   state.session = null;
   state.customSession = null;
   state.physicsSession = null;
+  state.physicsProblemSession = null;
   state.mistakes = 0;
   state.locked = false;
   render();
@@ -298,6 +353,7 @@ function openRussian() {
   state.session = null;
   state.customSession = null;
   state.physicsSession = null;
+  state.physicsProblemSession = null;
   state.mistakes = 0;
   state.locked = false;
   render();
@@ -311,6 +367,7 @@ function openPhysics() {
   state.session = null;
   state.customSession = null;
   state.physicsSession = null;
+  state.physicsProblemSession = null;
   state.mistakes = 0;
   state.locked = false;
   render();
@@ -319,6 +376,7 @@ function openPhysics() {
 function openPlaceholder(subjectId) {
   state.route = "placeholder";
   state.subjectId = subjectId;
+  state.physicsProblemSession = null;
   render();
 }
 
@@ -732,6 +790,21 @@ function render() {
     return;
   }
 
+  if (state.route === "physics-problems") {
+    renderPhysicsProblemSections();
+    return;
+  }
+
+  if (state.route === "physics-problem-topics") {
+    renderPhysicsProblemTopics();
+    return;
+  }
+
+  if (state.route === "physics-problem-practice") {
+    renderPhysicsProblemPractice();
+    return;
+  }
+
   if (state.route === "placeholder") {
     renderPlaceholder();
     return;
@@ -791,12 +864,151 @@ function startPhysicsGame() {
   state.screen = "physics-game";
   state.session = null;
   state.customSession = null;
+  state.physicsProblemSession = null;
   state.physicsSession = {
     rounds,
     index: 0,
     mistakes: 0
   };
   state.locked = false;
+  render();
+}
+
+function openPhysicsProblems() {
+  clearPendingTimer();
+  state.route = "physics-problems";
+  state.subjectId = "physics";
+  state.screen = "physics-problems";
+  state.physicsSession = null;
+  state.physicsProblemSession = null;
+  state.locked = false;
+  render();
+}
+
+function openPhysicsProblemTopics(sectionId) {
+  const section = physicsProblemSectionMap.get(sectionId);
+
+  if (!section) {
+    openPhysicsProblems();
+    return;
+  }
+
+  state.route = "physics-problem-topics";
+  state.subjectId = "physics";
+  state.screen = "physics-problem-topics";
+  state.physicsProblemSession = {
+    sectionId,
+    groupId: null,
+    topicId: null,
+    taskId: null,
+    showSolution: false,
+    userAnswer: "",
+    feedback: null
+  };
+  render();
+}
+
+function openPhysicsProblemGroup(groupId) {
+  const group = physicsProblemGroupMap.get(groupId);
+
+  if (!group) {
+    openPhysicsProblems();
+    return;
+  }
+
+  if (group.topics.length === 1) {
+    openPhysicsProblemPractice(group.topics[0].id);
+    return;
+  }
+
+  state.route = "physics-problem-topics";
+  state.subjectId = "physics";
+  state.screen = "physics-problem-topics";
+  state.physicsProblemSession = {
+    sectionId: group.sectionId,
+    groupId,
+    topicId: null,
+    taskId: null,
+    showSolution: false,
+    userAnswer: "",
+    feedback: null
+  };
+  render();
+}
+
+function openPhysicsProblemPractice(topicId) {
+  const topic = physicsProblemTopicMap.get(topicId);
+
+  if (!topic) {
+    openPhysicsProblems();
+    return;
+  }
+
+  state.route = "physics-problem-practice";
+  state.subjectId = "physics";
+  state.screen = "physics-problem-practice";
+  state.physicsProblemSession = {
+    sectionId: topic.sectionId,
+    groupId: topic.groupId,
+    topicId,
+    taskId: topic.tasks[0]?.id || null,
+    showSolution: false,
+    userAnswer: "",
+    feedback: null
+  };
+  render();
+}
+
+function openPhysicsProblemTask(taskId) {
+  const task = physicsProblemTaskMap.get(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  state.physicsProblemSession = {
+    sectionId: task.sectionId,
+    groupId: task.groupId,
+    topicId: task.topicId,
+    taskId,
+    showSolution: false,
+    userAnswer: "",
+    feedback: null
+  };
+  render();
+}
+
+function showPhysicsProblemAnswer() {
+  const task = currentPhysicsProblemTask();
+
+  if (!task) {
+    return;
+  }
+
+  state.physicsProblemSession.showSolution = true;
+  state.physicsProblemSession.feedback = null;
+  render();
+}
+
+function checkPhysicsProblemAnswer() {
+  const task = currentPhysicsProblemTask();
+
+  if (!task) {
+    return;
+  }
+
+  const userAnswer = normalizePhysicsAnswer(state.physicsProblemSession.userAnswer || "");
+  const correctAnswer = normalizePhysicsAnswer(task.answer || "");
+  const userNumber = extractPhysicsNumber(state.physicsProblemSession.userAnswer || "");
+  const correctNumber = extractPhysicsNumber(task.answer || "");
+
+  if (!correctAnswer) {
+    state.physicsProblemSession.feedback = "Ответ для этой задачи не распознался автоматически. Можно решить и сверить по сборнику.";
+  } else if (userAnswer && (userAnswer === correctAnswer || (userNumber !== null && correctNumber !== null && userNumber === correctNumber))) {
+    state.physicsProblemSession.feedback = "Правильно.";
+  } else {
+    state.physicsProblemSession.feedback = `Пока не совпало. Правильный ответ: ${task.answer}`;
+  }
   render();
 }
 
@@ -843,6 +1055,45 @@ function currentPhysicsRound() {
   return state.physicsSession.rounds[state.physicsSession.index];
 }
 
+function currentPhysicsProblemSection() {
+  return physicsProblemSectionMap.get(state.physicsProblemSession?.sectionId);
+}
+
+function currentPhysicsProblemTopic() {
+  return physicsProblemTopicMap.get(state.physicsProblemSession?.topicId);
+}
+
+function currentPhysicsProblemGroup() {
+  return physicsProblemGroupMap.get(state.physicsProblemSession?.groupId);
+}
+
+function currentPhysicsProblemTask() {
+  return physicsProblemTaskMap.get(state.physicsProblemSession?.taskId);
+}
+
+function normalizePhysicsAnswer(value) {
+  return normalizeWord(fixPhysicsOcrDigits(value))
+    .replace(/ё/g, "е")
+    .replace(/\s+/g, "")
+    .replace(/[.,]0+(?=\D|$)/g, "")
+    .replace(/[^0-9a-zа-я+\-*/=,%°]/gi, "");
+}
+
+function extractPhysicsNumber(value) {
+  const prepared = fixPhysicsOcrDigits(value)
+    .replace(/(\d)\s+(?=\d)/g, "$1")
+    .replace(",", ".");
+  const match = prepared.match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function fixPhysicsOcrDigits(value) {
+  return String(value)
+    .replace(/[Юю]/g, "10")
+    .replace(/[Зз](?=\s*[сc]\b)/g, "3")
+    .replace(/[Оо]/g, "0");
+}
+
 function renderPhysicsIntro() {
   dom.app.innerHTML = `
     <section class="hero-panel russian-start">
@@ -854,6 +1105,10 @@ function renderPhysicsIntro() {
         <button class="action-button primary" data-action="physics-start-game">Начать игру</button>
         ${renderTextbookLinks("physics")}
       </div>
+    </section>
+
+    <section class="hero-panel show-table-panel">
+      <button class="action-button secondary" data-action="physics-open-problems">Решать задачи</button>
     </section>
 
     <section class="hero-panel show-table-panel">
@@ -998,6 +1253,176 @@ function renderPhysicsFinish() {
       </div>
     </section>
   `;
+}
+
+function renderPhysicsProblemSections() {
+  dom.app.innerHTML = `
+    <section class="game-panel">
+      <div class="screen">
+        <div class="screen-head">
+          <div>
+            <p class="kicker">Физика · 1000 задач</p>
+            <h1 class="main-title">Выбери раздел</h1>
+            <p class="screen-text">Выбирай раздел, тип задач и номер. Условие откроется прямо на сайте.</p>
+          </div>
+          <a class="action-button secondary textbook-link" href="textbooks/physics-1000-tasks.pdf" target="_blank" rel="noopener">Открыть задачник</a>
+        </div>
+
+        <div class="problem-section-grid">
+          ${(physicsProblemBank.sections || [])
+            .map((section) => `
+              <button class="problem-card" data-action="physics-problem-section" data-value="${escapeHtml(section.id)}">
+                <span>${escapeHtml(section.title)}</span>
+                <small>${countPhysicsSectionTasks(section)} задач</small>
+              </button>
+            `)
+            .join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPhysicsProblemTopics() {
+  const section = currentPhysicsProblemSection();
+  const group = currentPhysicsProblemGroup();
+
+  if (!section) {
+    renderPhysicsProblemSections();
+    return;
+  }
+
+  const items = group ? group.topics : section.groups;
+  const title = group ? group.title : section.title;
+  const action = group ? "physics-problem-topic" : "physics-problem-group";
+  const backButton = group
+    ? `<button class="action-button secondary" data-action="physics-problem-section" data-value="${escapeHtml(section.id)}">К типам задач</button>`
+    : `<button class="action-button secondary" data-action="physics-open-problems">К разделам</button>`;
+
+  dom.app.innerHTML = `
+    <section class="game-panel">
+      <div class="screen">
+        <div class="screen-head">
+          <div>
+            <p class="kicker">Физика · 1000 задач</p>
+            <h1 class="main-title">${escapeHtml(title)}</h1>
+            <p class="screen-text">${group ? "Выбери тему задач." : "Выбери тип задач."}</p>
+          </div>
+        </div>
+
+        <div class="problem-section-grid">
+          ${items
+            .map((item) => `
+              <button class="problem-card ${item.type === "extended" ? "extended" : ""}" data-action="${action}" data-value="${escapeHtml(item.id)}">
+                <span>${escapeHtml(item.title)}</span>
+                <small>${countPhysicsItemTasks(item)} задач</small>
+              </button>
+            `)
+            .join("")}
+        </div>
+
+        <div class="action-row">
+          ${backButton}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPhysicsProblemPractice() {
+  const topic = currentPhysicsProblemTopic();
+  const task = currentPhysicsProblemTask();
+
+  if (!topic) {
+    renderPhysicsProblemSections();
+    return;
+  }
+
+  dom.app.innerHTML = `
+    <section class="game-panel problem-view-panel">
+      <div class="screen">
+        <div class="screen-head">
+          <div>
+            <p class="kicker">${escapeHtml(topic.sectionTitle)} · ${escapeHtml(topic.groupTitle)}</p>
+            <h1 class="screen-title">${escapeHtml(topic.title)}</h1>
+          </div>
+          <div class="mistake-counter">Краткий ответ</div>
+        </div>
+
+        <div class="problem-number-grid">
+          ${topic.tasks.map((item) => `
+            <button class="problem-number ${task?.id === item.id ? "active" : ""}" data-action="physics-problem-task" data-value="${escapeHtml(item.id)}">
+              ${item.number}
+            </button>
+          `).join("")}
+        </div>
+
+        ${task ? renderPhysicsProblemTaskCard(task) : ""}
+
+        <div class="action-row">
+          <button class="action-button secondary" data-action="physics-problem-back-sections">К разделам</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPhysicsProblemTaskCard(task) {
+  return `
+    <article class="problem-task-card">
+      <div class="problem-task-head">
+        <span class="stage-badge">Задача ${task.number}</span>
+        <span class="mini-meta">страница ${task.page}</span>
+      </div>
+      <div class="problem-task-text">${renderProblemText(task.text)}</div>
+      ${task.image ? `<img class="problem-figure" src="${escapeHtml(task.image)}" alt="Рисунок к задаче ${task.number}" loading="lazy">` : ""}
+      ${task.hasFigure ? `<p class="figure-note">Если рисунок на странице относится к другой задаче, ориентируйся на номер выбранной задачи.</p>` : ""}
+      ${renderPhysicsProblemAnswerBox(task)}
+    </article>
+  `;
+}
+
+function renderPhysicsProblemAnswerBox(task) {
+  const feedback = state.physicsProblemSession.feedback;
+
+  return `
+    <div class="problem-answer-panel">
+      <label class="problem-answer-label" for="physics-problem-answer">Твой краткий ответ</label>
+      <div class="problem-answer-row">
+        <input
+          id="physics-problem-answer"
+          class="problem-answer-input"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="Например: 42"
+          value="${escapeHtml(state.physicsProblemSession.userAnswer || "")}"
+          data-action="physics-problem-answer"
+        >
+        <button class="action-button primary" data-action="physics-problem-check">Проверить</button>
+      </div>
+      ${feedback ? `<p class="feedback-note">${escapeHtml(feedback)}</p>` : ""}
+    </div>
+  `;
+}
+
+function renderProblemText(text) {
+  return escapeHtml(text)
+    .split(/\n+/)
+    .map((line) => `<p>${line}</p>`)
+    .join("");
+}
+
+function countPhysicsSectionTasks(section) {
+  return section.groups.reduce((sum, group) => sum + countPhysicsItemTasks(group), 0);
+}
+
+function countPhysicsItemTasks(item) {
+  if (item.tasks) {
+    return item.tasks.length;
+  }
+
+  return item.topics.reduce((sum, topic) => sum + topic.tasks.length, 0);
 }
 
 function renderPhysicsProgress() {
