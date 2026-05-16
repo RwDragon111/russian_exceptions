@@ -989,6 +989,10 @@ body.dark .selection-counter {
   vertical-align: middle;
 }
 
+body.dark .math-task-text img.math {
+  filter: invert(1) brightness(1.18);
+}
+
 .math-task-text img:not(.math) {
   display: block;
   margin: 14px auto;

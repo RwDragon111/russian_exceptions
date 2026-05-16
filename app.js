@@ -1396,16 +1396,12 @@ function nextMathTask() {
   }
 
   const tasks = mathTasksByNumber.get(session.number) || [];
-  const available = tasks.filter((task) => !session.seenIds.has(task.id));
-  const nextTask = sample(available.length ? available : tasks);
+  const currentIndex = tasks.findIndex((task) => task.id === session.taskId);
+  const nextTask = tasks[(currentIndex + 1) % tasks.length];
 
   if (!nextTask) {
     openMathTopics();
     return;
-  }
-
-  if (available.length === 0) {
-    session.seenIds.clear();
   }
 
   session.taskId = nextTask.id;
@@ -2209,7 +2205,7 @@ function renderMathPractice() {
 
         <div class="action-row">
           <button class="action-button secondary" data-action="math-back-topics">К номерам</button>
-          <button class="action-button secondary" data-action="math-next-task">Другая задача</button>
+          <button class="action-button secondary" data-action="math-next-task">Следующая задача</button>
         </div>
       </div>
     </section>
