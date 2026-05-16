@@ -105,7 +105,15 @@ a,
   gap: 10px;
 }
 
+.profile-control {
+  position: fixed;
+  z-index: 20;
+  top: 18px;
+  left: 18px;
+}
+
 .icon-button,
+.profile-button,
 .back-button,
 .close-button,
 .action-button,
@@ -130,6 +138,7 @@ a,
 }
 
 .icon-button:hover,
+.profile-button:hover,
 .back-button:hover,
 .close-button:hover,
 .action-button:hover,
@@ -137,6 +146,40 @@ a,
 .rule-button:hover,
 .subject-card:hover {
   transform: translateY(-1px);
+}
+
+.profile-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(260px, calc(100vw - 132px));
+  min-height: 44px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 12px 28px rgba(26, 51, 67, 0.11);
+  font-weight: 900;
+}
+
+.profile-avatar {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #d88a35);
+  color: #fffaf1;
+  font-family: "Bitter", Georgia, serif;
+}
+
+.profile-name {
+  overflow: hidden;
+  max-width: 160px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .back-button {
@@ -662,6 +705,17 @@ body.dark .selection-counter {
   background: rgba(196, 107, 29, 0.14);
 }
 
+.problem-number.solved {
+  border-color: rgba(29, 143, 86, 0.55);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.problem-number.active.solved {
+  border-color: var(--success);
+  box-shadow: 0 0 0 4px var(--success-soft);
+}
+
 .problem-task-card {
   display: grid;
   gap: 18px;
@@ -779,6 +833,137 @@ body.dark .selection-counter {
 
 .feedback-note.danger {
   color: var(--danger);
+}
+
+.profile-panel .screen {
+  gap: 20px;
+}
+
+.profile-tabs,
+.profile-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.profile-card,
+.auth-form {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-form.compact {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.auth-form input {
+  min-height: 52px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  outline: none;
+}
+
+.auth-form input:focus {
+  border-color: rgba(196, 107, 29, 0.48);
+  box-shadow: 0 0 0 4px rgba(196, 107, 29, 0.12);
+}
+
+.profile-message {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 900;
+}
+
+.profile-message.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.profile-message.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.profile-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.profile-stat-row:last-child {
+  border-bottom: 0;
+}
+
+.profile-stat-row strong {
+  color: var(--accent-2);
+  font-family: "Bitter", Georgia, serif;
+  font-size: 2rem;
+}
+
+.profile-card-title {
+  margin: 0 0 14px;
+  font-family: "Bitter", Georgia, serif;
+  font-size: 1.45rem;
+}
+
+.solved-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.solved-list-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.solved-list-item strong {
+  color: var(--ink);
+}
+
+.solved-list-item span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
 .math-task-card {
@@ -1164,6 +1349,19 @@ body.dark .selection-counter {
   .top-controls {
     top: 10px;
     right: 10px;
+  }
+
+  .profile-control {
+    top: 10px;
+    left: 10px;
+  }
+
+  .profile-name {
+    display: none;
+  }
+
+  .profile-button {
+    padding: 6px;
   }
 
   .progress-track,

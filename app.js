@@ -135,10 +135,13 @@ const customModes = [
   { id: "risky", title: "Опасные слова" }
 ];
 const customModeMap = new Map(customModes.map((mode) => [mode.id, mode]));
+const authUsersKey = "ezzlearn-users-v1";
+const authCurrentUserKey = "ezzlearn-current-user-v1";
 
 const dom = {
   app: document.getElementById("app"),
   backButton: document.getElementById("back-button"),
+  profileButton: document.getElementById("profile-button"),
   themeButton: document.querySelector("[data-global-action='theme']")
 };
 
@@ -158,11 +161,14 @@ const state = {
   physicsSession: null,
   physicsProblemSession: null,
   mathSession: null,
+  profileMode: "login",
+  profileMessage: null,
   locked: false,
   timer: null
 };
 
 applyStoredTheme();
+updateProfileButton();
 render();
 
 if (query.get("autosolve") === "physics") {
@@ -322,6 +328,9 @@ document.addEventListener("click", (event) => {
     case "math-task-number":
       openMathPractice(Number(value));
       break;
+    case "math-task-select":
+      openMathTask(value);
+      break;
     case "math-check-answer":
       checkMathAnswer();
       break;
@@ -331,9 +340,28 @@ document.addEventListener("click", (event) => {
     case "math-back-topics":
       openMathTopics();
       break;
+    case "profile-mode":
+      state.profileMode = value;
+      state.profileMessage = null;
+      render();
+      break;
+    case "logout":
+      logoutUser();
+      break;
     default:
       break;
   }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("form[data-auth-form]");
+
+  if (!form) {
+    return;
+  }
+
+  event.preventDefault();
+  await handleAuthForm(form);
 });
 
 document.addEventListener("input", (event) => {
@@ -366,6 +394,11 @@ document.addEventListener("input", (event) => {
 function handleGlobalAction(action) {
   if (action === "back") {
     goHome();
+    return;
+  }
+
+  if (action === "profile") {
+    openProfile();
     return;
   }
 
@@ -435,6 +468,16 @@ function openMath() {
   state.physicsProblemSession = null;
   state.mathSession = null;
   state.mistakes = 0;
+  state.locked = false;
+  render();
+}
+
+function openProfile() {
+  clearPendingTimer();
+  state.route = "profile";
+  state.subjectId = null;
+  state.profileMode = getActiveUser() ? "account" : "login";
+  state.profileMessage = null;
   state.locked = false;
   render();
 }
@@ -887,6 +930,11 @@ function render() {
     return;
   }
 
+  if (state.route === "profile") {
+    renderProfile();
+    return;
+  }
+
   if (state.route === "placeholder") {
     renderPlaceholder();
     return;
@@ -916,6 +964,177 @@ function renderSubjectCard(subject) {
       <span>${escapeHtml(subject.text)}</span>
     </button>
   `;
+}
+
+function renderProfile() {
+  const activeUser = getActiveUser();
+
+  dom.app.innerHTML = `
+    <section class="game-panel profile-panel">
+      <div class="screen">
+        <div class="screen-head">
+          <div>
+            <p class="kicker">Профиль</p>
+            <h1 class="main-title">${activeUser ? escapeHtml(activeUser.username) : "Вход в аккаунт"}</h1>
+            <p class="screen-text">Профиль хранится в этом браузере и помогает отмечать решённые задания.</p>
+          </div>
+        </div>
+
+        ${renderProfileMessage()}
+        ${activeUser ? renderAccountProfile(activeUser) : renderAuthForms()}
+      </div>
+    </section>
+  `;
+}
+
+function renderAuthForms() {
+  const isRegister = state.profileMode === "register";
+
+  return `
+    <div class="profile-tabs">
+      <button class="action-button ${isRegister ? "secondary" : "primary"}" data-action="profile-mode" data-value="login">Войти</button>
+      <button class="action-button ${isRegister ? "primary" : "secondary"}" data-action="profile-mode" data-value="register">Создать аккаунт</button>
+    </div>
+
+    ${isRegister ? renderRegisterForm() : renderLoginForm()}
+  `;
+}
+
+function renderLoginForm() {
+  return `
+    <form class="auth-form" data-auth-form="login" autocomplete="on">
+      <label>
+        <span>Логин</span>
+        <input type="text" name="username" autocomplete="username" required>
+      </label>
+      <label>
+        <span>Пароль</span>
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="action-button primary" type="submit">Войти</button>
+    </form>
+  `;
+}
+
+function renderRegisterForm() {
+  return `
+    <form class="auth-form" data-auth-form="register" autocomplete="on">
+      <label>
+        <span>Логин</span>
+        <input type="text" name="username" autocomplete="username" required>
+      </label>
+      <label>
+        <span>Пароль</span>
+        <input type="password" name="password" autocomplete="new-password" required>
+      </label>
+      <label>
+        <span>Повтори пароль</span>
+        <input type="password" name="repeat-password" autocomplete="new-password" required>
+      </label>
+      <button class="action-button primary" type="submit">Создать аккаунт</button>
+    </form>
+  `;
+}
+
+function renderAccountProfile(user) {
+  const mathSolved = getSolvedEntries("math");
+  const physicsSolved = getSolvedEntries("physics");
+
+  return `
+    <div class="profile-grid">
+      <article class="profile-card">
+        <p class="kicker">Статистика</p>
+        <div class="profile-stat-row">
+          <strong>${mathSolved.length}</strong>
+          <span>математика</span>
+        </div>
+        <div class="profile-stat-row">
+          <strong>${physicsSolved.length}</strong>
+          <span>физика</span>
+        </div>
+      </article>
+
+      <article class="profile-card">
+        <p class="kicker">Смена пароля</p>
+        <form class="auth-form compact" data-auth-form="change-password" autocomplete="on">
+          <label>
+            <span>Старый пароль</span>
+            <input type="password" name="current-password" autocomplete="current-password" required>
+          </label>
+          <label>
+            <span>Новый пароль</span>
+            <input type="password" name="new-password" autocomplete="new-password" required>
+          </label>
+          <label>
+            <span>Повтори новый пароль</span>
+            <input type="password" name="repeat-password" autocomplete="new-password" required>
+          </label>
+          <button class="action-button primary" type="submit">Поменять пароль</button>
+        </form>
+      </article>
+    </div>
+
+    <div class="profile-grid">
+      ${renderSolvedList("Математика", mathSolved, "math")}
+      ${renderSolvedList("Физика", physicsSolved, "physics")}
+    </div>
+
+    <div class="action-row">
+      <button class="action-button secondary" data-action="logout">Выйти</button>
+    </div>
+  `;
+}
+
+function renderSolvedList(title, items, subject) {
+  return `
+    <article class="profile-card solved-list-card">
+      <p class="kicker">${escapeHtml(title)}</p>
+      <h2 class="profile-card-title">${formatTaskCount(items.length)}</h2>
+      ${items.length
+        ? `
+          <div class="solved-list">
+            ${items.slice(0, 18).map((item) => `
+              <div class="solved-list-item">
+                <strong>${escapeHtml(formatSolvedTitle(item, subject))}</strong>
+                <span>${escapeHtml(formatSolvedDate(item.solvedAt))}</span>
+              </div>
+            `).join("")}
+          </div>
+        `
+        : `<p class="mini-meta">Пока здесь пусто. Реши задание правильно, и оно появится в списке.</p>`}
+    </article>
+  `;
+}
+
+function renderProfileMessage() {
+  if (!state.profileMessage) {
+    return "";
+  }
+
+  return `<p class="profile-message ${state.profileMessage.type}">${escapeHtml(state.profileMessage.text)}</p>`;
+}
+
+function formatSolvedTitle(item, subject) {
+  if (subject === "math") {
+    return `Задание ${item.number}, задача ${item.displayNumber}`;
+  }
+
+  return item.title || `Задача ${item.displayNumber || item.number}`;
+}
+
+function formatSolvedDate(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function renderRussianIntro() {
@@ -1090,6 +1309,12 @@ function checkPhysicsProblemAnswer() {
     state.physicsProblemSession.feedback = "Ответ для этой задачи не распознался автоматически. Можно решить и сверить по сборнику.";
   } else if (userAnswer && (userAnswer === correctAnswer || (userNumber !== null && correctNumber !== null && userNumber === correctNumber))) {
     state.physicsProblemSession.feedback = "Правильно.";
+    recordSolvedTask("physics", {
+      id: task.id,
+      number: task.number,
+      displayNumber: task.number,
+      title: `${task.topicTitle || "Физика"} · задача ${task.number}`
+    });
   } else {
     state.physicsProblemSession.feedback = `Пока не совпало. Правильный ответ: ${task.answer}`;
   }
@@ -1123,7 +1348,7 @@ function openMathPractice(number) {
   state.screen = "math-practice";
   state.mathSession = {
     number,
-    taskId: sample(tasks).id,
+    taskId: tasks[0].id,
     userAnswer: "",
     feedback: null,
     solved: 0,
@@ -1131,6 +1356,34 @@ function openMathPractice(number) {
     seenIds: new Set()
   };
   state.mathSession.seenIds.add(state.mathSession.taskId);
+  render();
+}
+
+function openMathTask(taskId) {
+  const task = mathTaskMap.get(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  const session = state.mathSession || {
+    solved: 0,
+    mistakes: 0,
+    seenIds: new Set()
+  };
+
+  state.route = "math-practice";
+  state.subjectId = "math";
+  state.screen = "math-practice";
+  state.mathSession = {
+    ...session,
+    number: task.number,
+    taskId,
+    userAnswer: "",
+    feedback: null,
+    seenIds: session.seenIds || new Set()
+  };
+  state.mathSession.seenIds.add(taskId);
   render();
 }
 
@@ -1173,12 +1426,254 @@ function checkMathAnswer() {
   if (isMathAnswerCorrect(session.userAnswer, task.answer)) {
     session.feedback = { type: "success", text: "Правильно." };
     session.solved += 1;
+    recordSolvedTask("math", {
+      id: task.id,
+      number: task.number,
+      displayNumber: getMathTaskDisplayNumber(task),
+      title: task.title
+    });
   } else {
     session.feedback = { type: "danger", text: `Пока не совпало. Правильный ответ: ${task.answer}` };
     session.mistakes += 1;
   }
 
   render();
+}
+
+async function handleAuthForm(form) {
+  const formData = new FormData(form);
+  const formType = form.dataset.authForm;
+
+  if (formType === "login") {
+    await loginUser(formData);
+    return;
+  }
+
+  if (formType === "register") {
+    await registerUser(formData);
+    return;
+  }
+
+  if (formType === "change-password") {
+    await changeUserPassword(formData);
+  }
+}
+
+async function loginUser(formData) {
+  const username = String(formData.get("username") || "").trim();
+  const password = String(formData.get("password") || "");
+  const userKey = normalizeUsernameKey(username);
+  const users = loadUsers();
+  const user = users[userKey];
+
+  if (!user || user.passwordHash !== await hashPassword(userKey, password)) {
+    setProfileMessage("danger", "Логин или пароль не подошли.");
+    return;
+  }
+
+  localStorage.setItem(authCurrentUserKey, userKey);
+  state.profileMode = "account";
+  setProfileMessage("success", "Ты вошёл в профиль.");
+  updateProfileButton();
+  render();
+}
+
+async function registerUser(formData) {
+  const username = String(formData.get("username") || "").trim();
+  const password = String(formData.get("password") || "");
+  const repeatPassword = String(formData.get("repeat-password") || "");
+  const userKey = normalizeUsernameKey(username);
+  const users = loadUsers();
+
+  if (userKey.length < 3) {
+    setProfileMessage("danger", "Логин должен быть не короче 3 символов.");
+    return;
+  }
+
+  if (password.length < 4) {
+    setProfileMessage("danger", "Пароль должен быть не короче 4 символов.");
+    return;
+  }
+
+  if (password !== repeatPassword) {
+    setProfileMessage("danger", "Пароли не совпали.");
+    return;
+  }
+
+  if (users[userKey]) {
+    setProfileMessage("danger", "Такой логин уже есть в этом браузере.");
+    return;
+  }
+
+  users[userKey] = {
+    username,
+    passwordHash: await hashPassword(userKey, password),
+    createdAt: new Date().toISOString(),
+    stats: createEmptyStats()
+  };
+  saveUsers(users);
+  localStorage.setItem(authCurrentUserKey, userKey);
+  state.profileMode = "account";
+  setProfileMessage("success", "Профиль создан.");
+  updateProfileButton();
+  render();
+}
+
+async function changeUserPassword(formData) {
+  const activeUser = getActiveUser();
+
+  if (!activeUser) {
+    openProfile();
+    return;
+  }
+
+  const currentPassword = String(formData.get("current-password") || "");
+  const newPassword = String(formData.get("new-password") || "");
+  const repeatPassword = String(formData.get("repeat-password") || "");
+
+  if (activeUser.passwordHash !== await hashPassword(activeUser.key, currentPassword)) {
+    setProfileMessage("danger", "Старый пароль не подошёл.");
+    return;
+  }
+
+  if (newPassword.length < 4) {
+    setProfileMessage("danger", "Новый пароль должен быть не короче 4 символов.");
+    return;
+  }
+
+  if (newPassword !== repeatPassword) {
+    setProfileMessage("danger", "Новые пароли не совпали.");
+    return;
+  }
+
+  activeUser.passwordHash = await hashPassword(activeUser.key, newPassword);
+  saveActiveUser(activeUser);
+  setProfileMessage("success", "Пароль обновлён.");
+}
+
+function logoutUser() {
+  localStorage.removeItem(authCurrentUserKey);
+  state.profileMode = "login";
+  setProfileMessage("success", "Ты вышел из профиля.");
+  updateProfileButton();
+  render();
+}
+
+function setProfileMessage(type, text) {
+  state.profileMessage = { type, text };
+  render();
+}
+
+function loadUsers() {
+  try {
+    return JSON.parse(localStorage.getItem(authUsersKey)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUsers(users) {
+  localStorage.setItem(authUsersKey, JSON.stringify(users));
+}
+
+function getActiveUser() {
+  const userKey = localStorage.getItem(authCurrentUserKey);
+
+  if (!userKey) {
+    return null;
+  }
+
+  const user = loadUsers()[userKey];
+
+  if (!user) {
+    localStorage.removeItem(authCurrentUserKey);
+    return null;
+  }
+
+  user.key = userKey;
+  user.stats = normalizeUserStats(user.stats);
+  return user;
+}
+
+function saveActiveUser(user) {
+  const users = loadUsers();
+  const userKey = user.key || normalizeUsernameKey(user.username);
+  const { key, ...storedUser } = user;
+
+  storedUser.stats = normalizeUserStats(storedUser.stats);
+  users[userKey] = storedUser;
+  saveUsers(users);
+}
+
+function normalizeUserStats(stats) {
+  return {
+    math: { ...(stats?.math || {}) },
+    physics: { ...(stats?.physics || {}) }
+  };
+}
+
+function createEmptyStats() {
+  return {
+    math: {},
+    physics: {}
+  };
+}
+
+function normalizeUsernameKey(username) {
+  return String(username || "").trim().toLowerCase();
+}
+
+async function hashPassword(userKey, password) {
+  const value = `ezzlearn:${userKey}:${password}`;
+
+  if (window.crypto?.subtle) {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
+  }
+
+  return `fallback-${hash}`;
+}
+
+function recordSolvedTask(subject, task) {
+  const activeUser = getActiveUser();
+
+  if (!activeUser || !task?.id) {
+    return;
+  }
+
+  const stats = normalizeUserStats(activeUser.stats);
+  const bucket = stats[subject] || {};
+
+  bucket[task.id] = {
+    id: task.id,
+    number: task.number || null,
+    displayNumber: task.displayNumber || task.number || null,
+    title: task.title || "Задание",
+    solvedAt: new Date().toISOString()
+  };
+  stats[subject] = bucket;
+  activeUser.stats = stats;
+  saveActiveUser(activeUser);
+  updateProfileButton();
+}
+
+function isTaskSolved(subject, taskId) {
+  const activeUser = getActiveUser();
+  return Boolean(activeUser?.stats?.[subject]?.[taskId]);
+}
+
+function getSolvedEntries(subject) {
+  const activeUser = getActiveUser();
+  return Object.values(activeUser?.stats?.[subject] || {}).sort((a, b) =>
+    String(b.solvedAt || "").localeCompare(String(a.solvedAt || ""))
+  );
 }
 
 function buildPhysicsRound(entry) {
@@ -1242,6 +1737,12 @@ function currentPhysicsProblemTask() {
 
 function currentMathTask() {
   return mathTaskMap.get(state.mathSession?.taskId);
+}
+
+function getMathTaskDisplayNumber(task) {
+  const tasks = mathTasksByNumber.get(task?.number) || [];
+  const index = tasks.findIndex((item) => item.id === task?.id);
+  return index >= 0 ? index + 1 : "";
 }
 
 function normalizePhysicsAnswer(value) {
@@ -1569,7 +2070,7 @@ function renderPhysicsProblemPractice() {
 
         <div class="problem-number-grid">
           ${topic.tasks.map((item) => `
-            <button class="problem-number ${task?.id === item.id ? "active" : ""}" data-action="physics-problem-task" data-value="${escapeHtml(item.id)}">
+            <button class="problem-number ${task?.id === item.id ? "active" : ""} ${isTaskSolved("physics", item.id) ? "solved" : ""}" data-action="physics-problem-task" data-value="${escapeHtml(item.id)}">
               ${item.number}
             </button>
           `).join("")}
@@ -1671,6 +2172,7 @@ function renderMathTopics() {
 function renderMathPractice() {
   const task = currentMathTask();
   const session = state.mathSession;
+  const tasks = mathTasksByNumber.get(session?.number) || [];
 
   if (!task || !session) {
     renderMathTopics();
@@ -1688,9 +2190,17 @@ function renderMathPractice() {
           <div class="mistake-counter">Ошибок: ${session.mistakes}</div>
         </div>
 
+        <div class="problem-number-grid math-number-grid">
+          ${tasks.map((item, index) => `
+            <button class="problem-number ${task.id === item.id ? "active" : ""} ${isTaskSolved("math", item.id) ? "solved" : ""}" data-action="math-task-select" data-value="${escapeHtml(item.id)}">
+              ${index + 1}
+            </button>
+          `).join("")}
+        </div>
+
         <article class="problem-task-card math-task-card">
           <div class="problem-task-head">
-            <span class="stage-badge">Краткий ответ</span>
+            <span class="stage-badge">Задача ${getMathTaskDisplayNumber(task)}</span>
             <span class="mini-meta">${escapeHtml(task.source || "Банк ФИПИ")}</span>
           </div>
           <div class="problem-task-text math-task-text">${task.html}</div>
@@ -2613,6 +3123,28 @@ function getRiskyButtonState(word, selected, feedback) {
 
 function updateBackButton() {
   dom.backButton.classList.toggle("visible", state.route !== "home");
+}
+
+function updateProfileButton() {
+  if (!dom.profileButton) {
+    return;
+  }
+
+  const activeUser = getActiveUser();
+  const avatar = dom.profileButton.querySelector(".profile-avatar");
+  const name = dom.profileButton.querySelector(".profile-name");
+
+  if (activeUser) {
+    const label = activeUser.username || "Профиль";
+    avatar.textContent = label.slice(0, 1).toUpperCase();
+    name.textContent = label;
+    dom.profileButton.classList.add("is-active");
+    return;
+  }
+
+  avatar.textContent = "Я";
+  name.textContent = "Войти";
+  dom.profileButton.classList.remove("is-active");
 }
 
 function applyStoredTheme() {
